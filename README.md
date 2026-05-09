@@ -1,91 +1,289 @@
-# X（Twitter）自動投稿スクリプト
+# X（Twitter）自動投稿スクリプト セットアップガイド
 
-Googleスプレッドシートで管理した投稿をX API v2で自動投稿するシステムです。  
-GitHub Actionsで毎日21:00 JST（12:00 UTC）に実行されます。
+このガイドを上から順番に読んで進めれば、プログラミング未経験でも設定できるように書いています。  
+わからない言葉が出てきたら、その都度説明していますので安心してください。
 
-## ディレクトリ構成
+---
+
+## このシステムの全体像
 
 ```
-.
-├── post_to_x.py                   # メインスクリプト
-├── requirements.txt               # 依存ライブラリ
-├── sample_data.csv                # スプレッドシート初期データ
-└── .github/workflows/post_to_x.yml  # GitHub Actions ワークフロー
+①スプレッドシートに投稿文を書いておく
+        ↓
+②毎日21時にGitHub Actionsが自動で起動
+        ↓
+③Pythonスクリプトがスプレッドシートを読む
+        ↓
+④「今日が投稿予定日 かつ まだ投稿していない」行を探す
+        ↓
+⑤X（Twitter）に投稿する
+        ↓
+⑥スプレッドシートの「posted」列をTRUEにする（二重投稿防止）
 ```
 
-## Googleスプレッドシートの設定
+---
 
-### 列構成
+## STEP 1：Googleスプレッドシートを作る
 
-| 列 | 項目名 | 内容 |
-|----|--------|------|
-| A | id | 連番 |
-| B | text | 投稿本文 |
-| C | scheduled_date | 投稿予定日（YYYY-MM-DD） |
-| D | posted | 投稿済みフラグ（TRUE / FALSE） |
+### 1-1. スプレッドシートを新規作成する
 
-### 初期データの投入
+1. ブラウザで [Google スプレッドシート](https://sheets.google.com) を開く
+2. 左上の「＋ 空白のスプレッドシート」をクリック
+3. 左上のファイル名（「無題のスプレッドシート」）をクリックして、好きな名前に変更する  
+   例：`X自動投稿`
 
-`sample_data.csv` の内容をスプレッドシートにコピーしてください。  
-1行目はヘッダー行（id, text, scheduled_date, posted）として使用します。
+### 1-2. ヘッダー行を入力する
 
-## セットアップ手順
+1行目に以下の通り入力してください（コピー&ペーストでもOK）：
 
-### 1. Googleサービスアカウントの作成
+| A1 | B1 | C1 | D1 |
+|----|----|----|-----|
+| id | text | scheduled_date | posted |
 
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
-2. 「APIとサービス」→「ライブラリ」から **Google Sheets API** を有効化
-3. 「APIとサービス」→「認証情報」→「サービスアカウントを作成」
-4. サービスアカウントのJSONキーをダウンロード
-5. スプレッドシートの共有設定でサービスアカウントのメールアドレスに **編集者** 権限を付与
+### 1-3. サンプルデータを入力する
 
-### 2. JSONキーをBase64エンコード
+2行目以降に投稿データを入力します。以下をそのままコピーして貼り付けてください：
 
+| A | B | C | D |
+|---|---|---|---|
+| 1 | おはようございます！今日も一日頑張りましょう。毎朝の小さな積み重ねが、大きな成果につながります。#朝活 #モチベーション | 2026-05-10 | FALSE |
+| 2 | 読書は最高の自己投資。1日15分でも本を読む習慣をつけると、1年で90時間以上の学習時間になります。あなたのおすすめの本は何ですか？#読書 #自己成長 | 2026-05-11 | FALSE |
+| 3 | 失敗を恐れないでください。失敗はゴールではなく、成功へのステップです。大切なのは立ち上がり続けること。#チャレンジ #成長マインドセット | 2026-05-12 | FALSE |
+| 4 | 今週もお疲れ様でした！週末はしっかり休んでエネルギーをチャージ。来週また一緒に頑張りましょう。皆さんはどんな週末を過ごしますか？#週末 #リフレッシュ | 2026-05-13 | FALSE |
+
+> **注意：** C列の日付は `YYYY-MM-DD` 形式（例：2026-05-10）で入力してください。  
+> セルを文字列として扱うため、入力後に日付が自動変換された場合は、セルを右クリック→「セルの書式設定」→「書式なしテキスト」に変更してください。
+
+### 1-4. スプレッドシートIDをメモする
+
+URLを確認してください。以下のような形式になっています：
+
+```
+https://docs.google.com/spreadsheets/d/【ここがスプレッドシートID】/edit
+```
+
+`/d/` と `/edit` の間の長い文字列がIDです。後で使うのでメモしておいてください。
+
+---
+
+## STEP 2：Google Cloud でサービスアカウントを作る
+
+> **サービスアカウントとは？**  
+> プログラムがGoogleのサービス（スプレッドシートなど）にアクセスするための「専用のID」です。  
+> 人間がログインする代わりに、プログラムがこのIDを使って自動でスプレッドシートを読み書きします。
+
+### 2-1. Google Cloud Console を開く
+
+1. [https://console.cloud.google.com/](https://console.cloud.google.com/) をブラウザで開く
+2. Googleアカウントでログインする（スプレッドシートと同じアカウントを使う）
+
+### 2-2. プロジェクトを作る
+
+> **プロジェクトとは？**  
+> Google Cloudの中の「作業フォルダ」のようなものです。
+
+1. 画面上部の「プロジェクトの選択」をクリック
+2. 右上の「新しいプロジェクト」をクリック
+3. プロジェクト名に `x-auto-post` など好きな名前を入力
+4. 「作成」をクリック
+5. 作成後、上部のプロジェクト選択から今作ったプロジェクトを選ぶ
+
+### 2-3. Google Sheets API を有効にする
+
+1. 左上のハンバーガーメニュー（三本線）→「APIとサービス」→「ライブラリ」
+2. 検索窓に `Google Sheets API` と入力
+3. 「Google Sheets API」をクリック→「有効にする」をクリック
+
+### 2-4. サービスアカウントを作る
+
+1. 左メニュー「APIとサービス」→「認証情報」をクリック
+2. 上部の「＋ 認証情報を作成」→「サービスアカウント」をクリック
+3. サービスアカウント名に `spreadsheet-writer` など好きな名前を入力
+4. 「作成して続行」をクリック
+5. 「ロールを選択」→「基本」→「編集者」を選択
+6. 「続行」→「完了」をクリック
+
+### 2-5. JSONキー（認証ファイル）をダウンロードする
+
+1. 「認証情報」画面に戻ると、作ったサービスアカウントが一覧に表示されている
+2. そのサービスアカウントのメールアドレスをクリック
+3. 上部の「キー」タブをクリック
+4. 「鍵を追加」→「新しい鍵を作成」→「JSON」→「作成」
+5. JSONファイルが自動でダウンロードされる（大切に保管してください）
+
+> **このJSONファイルは秘密情報です。**  
+> GitHubにアップロードしたり、人に見せたりしないでください。
+
+### 2-6. スプレッドシートにサービスアカウントを共有する
+
+1. ダウンロードしたJSONファイルをテキストエディタ（メモ帳など）で開く
+2. `"client_email"` という項目の値をコピーする  
+   例：`spreadsheet-writer@x-auto-post-123456.iam.gserviceaccount.com`
+3. スプレッドシートを開き、右上の「共有」ボタンをクリック
+4. コピーしたメールアドレスを貼り付け、権限を「編集者」に設定して「送信」
+
+### 2-7. JSONファイルをBase64に変換する
+
+> **Base64とは？**  
+> ファイルの内容を文字だけで表現する方法です。  
+> GitHub Secretsにはテキストしか登録できないため、JSONファイルをこの形式に変換します。
+
+**Macの場合（ターミナルで実行）：**
 ```bash
-base64 -i your-service-account.json | tr -d '\n'
+base64 -i /path/to/downloaded-file.json | tr -d '\n'
 ```
 
-出力された文字列を `GOOGLE_CREDENTIALS` シークレットに設定します。
+**Windowsの場合（PowerShellで実行）：**
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\downloaded-file.json"))
+```
 
-### 3. X（Twitter）API認証情報の取得
-
-[X Developer Portal](https://developer.twitter.com/) で以下を取得：
-
-- API Key → `X_API_KEY`
-- API Key Secret → `X_API_KEY_SECRET`
-- Access Token → `X_ACCESS_TOKEN`
-- Access Token Secret → `X_ACCESS_TOKEN_SECRET`
-
-アクセストークンの権限は **Read and Write** が必要です。
-
-### 4. GitHub Secretsの設定
-
-リポジトリの「Settings」→「Secrets and variables」→「Actions」から以下を設定：
-
-| シークレット名 | 値 |
-|---------------|----|
-| `X_API_KEY` | X APIキー |
-| `X_API_KEY_SECRET` | X APIキーシークレット |
-| `X_ACCESS_TOKEN` | Xアクセストークン |
-| `X_ACCESS_TOKEN_SECRET` | Xアクセストークンシークレット |
-| `GOOGLE_CREDENTIALS` | サービスアカウントJSONのBase64文字列 |
-| `SPREADSHEET_ID` | スプレッドシートのID（URLの `/d/` と `/edit` の間の文字列） |
-
-## 動作確認（手動実行）
-
-GitHub Actionsの「Actions」タブ → 「Post to X」→ 「Run workflow」から手動実行できます。
-
-## ローカルでのテスト
-
+**Linuxの場合（ターミナルで実行）：**
 ```bash
-pip install -r requirements.txt
-
-export X_API_KEY=your_key
-export X_API_KEY_SECRET=your_secret
-export X_ACCESS_TOKEN=your_token
-export X_ACCESS_TOKEN_SECRET=your_token_secret
-export GOOGLE_CREDENTIALS=$(base64 -i your-service-account.json | tr -d '\n')
-export SPREADSHEET_ID=your_spreadsheet_id
-
-python post_to_x.py
+base64 -w 0 /path/to/downloaded-file.json
 ```
+
+出力された長い文字列をコピーしてメモしておいてください。これが `GOOGLE_CREDENTIALS` です。
+
+---
+
+## STEP 3：X（Twitter）APIの認証情報を取得する
+
+> **X APIとは？**  
+> プログラムからXに投稿したり、データを取得したりするための仕組みです。  
+> 利用には開発者アカウントの申請が必要です。
+
+### 3-1. X Developer Portal に申請する
+
+1. [https://developer.twitter.com/](https://developer.twitter.com/) を開く
+2. 右上の「Sign up」または「Developer Portal」をクリック
+3. Xアカウントでログインし、開発者アカウントの申請を進める
+4. 利用目的を聞かれるので「自分のアカウントへの自動投稿」と正直に記入する
+5. 審査が通ると（即時〜数日）、Developer Portalにアクセスできるようになる
+
+### 3-2. アプリを作る
+
+1. Developer Portal の左メニュー「Projects & Apps」→「Create App」または「Add App」
+2. アプリ名を入力（例：`kyutaro-auto-post`）して作成
+3. 作成後に表示される以下をコピーしてメモする：
+   - **API Key**（`X_API_KEY`）
+   - **API Key Secret**（`X_API_KEY_SECRET`）
+
+### 3-3. アクセストークンを生成する
+
+1. アプリの設定画面→「Keys and tokens」タブ
+2. 「User authentication settings」で「Read and Write」権限になっていることを確認  
+   （なっていない場合は「Edit」→「Read and Write」に変更して保存）
+3. 「Access Token and Secret」の「Generate」をクリック
+4. 以下をコピーしてメモする：
+   - **Access Token**（`X_ACCESS_TOKEN`）
+   - **Access Token Secret**（`X_ACCESS_TOKEN_SECRET`）
+
+> **注意：** アクセストークンは一度しか表示されません。必ずすぐにメモしてください。
+
+---
+
+## STEP 4：GitHubにシークレットを登録する
+
+> **GitHub Secretsとは？**  
+> APIキーなどの秘密情報を安全に保管する仕組みです。  
+> コードに直接書かずに、プログラムが実行時に読み取れるようにします。
+
+### 4-1. GitHubリポジトリを開く
+
+このスクリプトが入っているGitHubリポジトリをブラウザで開いてください。
+
+### 4-2. シークレットを登録する
+
+1. リポジトリページの上部タブ「**Settings**」をクリック
+2. 左メニューの「**Secrets and variables**」→「**Actions**」をクリック
+3. 「**New repository secret**」をクリック
+4. 以下の6つを1つずつ登録する：
+
+| Name（名前） | Secret（値） |
+|-------------|-------------|
+| `X_API_KEY` | STEP 3-2 でメモした API Key |
+| `X_API_KEY_SECRET` | STEP 3-2 でメモした API Key Secret |
+| `X_ACCESS_TOKEN` | STEP 3-3 でメモした Access Token |
+| `X_ACCESS_TOKEN_SECRET` | STEP 3-3 でメモした Access Token Secret |
+| `GOOGLE_CREDENTIALS` | STEP 2-7 でメモした Base64 の長い文字列 |
+| `SPREADSHEET_ID` | STEP 1-4 でメモした スプレッドシートID |
+
+登録方法：Name欄に名前を入力 → Secret欄に値を貼り付け → 「Add secret」をクリック
+
+---
+
+## STEP 5：動作確認をする
+
+### 5-1. 手動でテスト実行する
+
+1. GitHubリポジトリの上部タブ「**Actions**」をクリック
+2. 左メニューの「**Post to X**」をクリック
+3. 右側の「**Run workflow**」をクリック → 「**Run workflow**」ボタンをクリック
+4. ワークフローが実行される（緑のチェックマークが出れば成功）
+
+> **テスト前の準備：**  
+> スプレッドシートのC列（scheduled_date）のどれか1行を今日の日付（YYYY-MM-DD形式）に変更し、  
+> D列（posted）が `FALSE` になっていることを確認してください。
+
+### 5-2. 実行結果を確認する
+
+1. 実行されたワークフローをクリック
+2. 「post」ジョブをクリック
+3. 「Run post script」をクリックするとログが見られる
+
+成功した場合のログ例：
+```
+Posting row 2: おはようございます！今日も一日頑張りましょう...
+Row 2 posted and marked as done.
+```
+
+投稿なしの場合のログ例：
+```
+No posts scheduled for today.
+```
+
+---
+
+## 毎日の自動実行について
+
+設定が完了すると、毎日21:00（日本時間）に自動で実行されます。  
+何もしなくて大丈夫です。スプレッドシートに投稿予定日と文章を入力しておくだけで、  
+その日の21時に自動でXに投稿されます。
+
+### 投稿を追加するには
+
+スプレッドシートに行を追加するだけです：
+
+| A | B | C | D |
+|---|---|---|---|
+| 5 | 新しい投稿文をここに書く | 2026-05-14 | FALSE |
+
+D列は必ず `FALSE` にしてください（投稿前の状態）。
+
+---
+
+## よくある質問とトラブルシューティング
+
+### Q. GitHub Actionsが失敗した場合は？
+
+Actionsタブで赤いバツマークのジョブをクリックし、エラーログを確認してください。  
+よくあるエラー：
+
+- `Unauthorized` → Xの認証情報が間違っている
+- `INVALID_ARGUMENT` → スプレッドシートIDが間違っている
+- `PermissionError` → サービスアカウントへの共有設定が漏れている
+
+### Q. 投稿が重複しないか？
+
+投稿後にスプレッドシートのD列を `TRUE` に更新するため、再実行しても同じ行は投稿されません。
+
+### Q. 投稿をキャンセルしたい場合は？
+
+スプレッドシートのD列を `TRUE` に変更しておけば、その行はスキップされます。
+
+### Q. scheduled_dateを当日にしても投稿されない場合は？
+
+- C列の日付形式が `YYYY-MM-DD` になっているか確認（例：`2026-05-10`）
+- D列が `FALSE` になっているか確認（`True` や `true` でもOK）
+- GitHub Actionsを手動実行して、ログでエラーを確認する
