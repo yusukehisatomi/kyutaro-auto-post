@@ -1,0 +1,32 @@
+name: 投稿済みにする
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "投稿済みにする日付（YYYY-MM-DD）"
+        required: true
+        type: string
+
+jobs:
+  mark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install gspread google-auth
+
+      - name: Mark posts as posted
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          TARGET_DATE: ${{ inputs.target_date }}
+        run: python mark_posted.py
