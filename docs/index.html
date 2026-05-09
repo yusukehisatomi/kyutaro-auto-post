@@ -139,6 +139,7 @@
     <h2>✅ 投稿済みにする</h2>
     <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">手動でXに投稿した後、この日付の行をposted=TRUEにします。</p>
     <input type="date" id="targetDate">
+    <button class="btn btn-secondary" onclick="setToday()" style="margin-top:8px;">今日の日付にリセット</button>
     <button class="btn btn-primary" id="markBtn" onclick="markPosted()" style="background:#2e7d32;">投稿済みにする</button>
     <div id="markResult" class="alert"></div>
   </div>
@@ -261,7 +262,10 @@
     el.textContent = msg; el.className = 'alert ' + type; el.style.display = 'block';
   }
 
-  document.getElementById('targetDate').value = new Date().toLocaleDateString('sv-SE');
+  function setToday() {
+    document.getElementById('targetDate').value = new Date().toLocaleDateString('sv-SE');
+  }
+  setToday();
   loadToken();
 </script>
 </body>
