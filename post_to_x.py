@@ -19,8 +19,10 @@ def get_spreadsheet():
         creds_dict = json.loads(raw)
     except json.JSONDecodeError:
         creds_dict = json.loads(base64.b64decode(raw).decode("utf-8"))
+    print(f"[DEBUG] service_account: {creds_dict.get('client_email')}")
     client = gspread.service_account_from_dict(creds_dict)
-    spreadsheet_id = os.environ["SPREADSHEET_ID"]
+    spreadsheet_id = os.environ["SPREADSHEET_ID"].strip()
+    print(f"[DEBUG] spreadsheet_id: '{spreadsheet_id}' (len={len(spreadsheet_id)})")
     return client.open_by_key(spreadsheet_id).sheet1
 
 
