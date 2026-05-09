@@ -1,0 +1,32 @@
+name: 投稿ネタを追加
+
+on:
+  workflow_dispatch:
+    inputs:
+      posts:
+        description: "投稿ネタ（1行1投稿）"
+        required: true
+        type: string
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install gspread google-auth
+
+      - name: Add posts to spreadsheet
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
+          POSTS: ${{ inputs.posts }}
+        run: python add_posts.py
