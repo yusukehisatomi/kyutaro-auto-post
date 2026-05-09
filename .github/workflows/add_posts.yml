@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       posts:
-        description: "投稿ネタ（1行1投稿）"
+        description: "投稿ネタ（|で区切って複数入力OK）"
         required: true
         type: string
 

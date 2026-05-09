@@ -24,7 +24,7 @@ def main():
         print("No posts provided.")
         return
 
-    lines = [line.strip() for line in posts_text.split("\n") if line.strip()]
+    lines = [line.strip() for line in posts_text.replace("\n", "|").split("|") if line.strip()]
     if not lines:
         print("No valid posts found.")
         return
