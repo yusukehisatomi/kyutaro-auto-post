@@ -5,9 +5,6 @@ from datetime import date
 
 import tweepy
 import gspread
-from google.oauth2.service_account import Credentials
-
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 HEADER_ROW = 1
 COL_ID = 1
@@ -18,13 +15,11 @@ COL_POSTED = 4
 
 def get_spreadsheet():
     raw = os.environ["GOOGLE_CREDENTIALS"]
-    # Base64エンコード済みでも生JSONでも両方対応
     try:
         creds_dict = json.loads(raw)
     except json.JSONDecodeError:
         creds_dict = json.loads(base64.b64decode(raw).decode("utf-8"))
-    creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-    client = gspread.authorize(creds)
+    client = gspread.service_account_from_dict(creds_dict)
     spreadsheet_id = os.environ["SPREADSHEET_ID"]
     return client.open_by_key(spreadsheet_id).sheet1
 
