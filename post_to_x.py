@@ -1,7 +1,6 @@
 import os
 import base64
 import json
-import tempfile
 from datetime import date
 
 import tweepy
@@ -18,9 +17,12 @@ COL_POSTED = 4
 
 
 def get_spreadsheet():
-    encoded = os.environ["GOOGLE_CREDENTIALS"]
-    creds_json = base64.b64decode(encoded).decode("utf-8")
-    creds_dict = json.loads(creds_json)
+    raw = os.environ["GOOGLE_CREDENTIALS"]
+    # Base64エンコード済みでも生JSONでも両方対応
+    try:
+        creds_dict = json.loads(raw)
+    except json.JSONDecodeError:
+        creds_dict = json.loads(base64.b64decode(raw).decode("utf-8"))
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     client = gspread.authorize(creds)
     spreadsheet_id = os.environ["SPREADSHEET_ID"]
